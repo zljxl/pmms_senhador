@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { useDepartamentos, usePainelConfig, useSenhasDeHoje } from "@/hooks/use-senhas";
+import { useDepartamentos, useGuiches, usePainelConfig, useSenhasDeHoje } from "@/hooks/use-senhas";
 import { rotuloChamada, type Departamento, type Senha } from "@/lib/senhas";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export const Route = createFileRoute("/painel")({
   head: () => ({
@@ -40,12 +40,15 @@ function horaDe(s: Senha) {
 function Painel() {
   const { data: senhas = [] } = useSenhasDeHoje(2000);
   const { data: departamentos = [] } = useDepartamentos();
+  const { data: guiches = [] } = useGuiches();
   const { data: config } = usePainelConfig();
 
   const [time, setTime] = useState<any>(null)
+  const [audioLiberado, setAudioLiberado] = useState(false);
+  const ultimaChamadaAnunciada = useRef<string | null>(null);
 
   useEffect(() => {
-    setInterval(() => {
+    const intervalo = setInterval(() => {
       setTime(new Date().toLocaleTimeString("pt-BR", {
         hour: "2-digit",
         minute: "2-digit",
@@ -53,6 +56,7 @@ function Painel() {
         timeZone: "America/Sao_Paulo",
       }))
     }, 1000)
+    return () => clearInterval(intervalo);
   }, [])
 
   const ativos = departamentos.filter((d) => d.ativo);
@@ -64,25 +68,33 @@ function Painel() {
   const depDe = (s: Senha): Departamento | undefined =>
     ativos.find((d) => d.id === s.departamento_id);
 
-  const falarNome = (nome: string) => {
-    if (!("speechSynthesis" in window)) {
-      alert("Este navegador não suporta síntese de voz.");
-      return;
-    }
+  const itensPainel = ativos.flatMap((d: any) => {
+    const gs = guiches.filter((g) => g.departamento_id === d.id && g.ativo);
+    return gs.length ? gs.map((g) => ({ departamento: d, guiche: g })) : [{ departamento: d, guiche: null }];
+  });
+
+  const falarNome = async (nome: string) => {
+    if (!audioLiberado) return;
 
     const campainha = new Audio("/freesound_community-ding-47489.mp3");
 
-    campainha.play();
-
-    campainha.onended = () => {
-      const voices = speechSynthesis.getVoices();
+    let pronunciou = false;
+    const pronunciar = () => {
+      if (pronunciou) return;
+      pronunciou = true;
+      if (!("speechSynthesis" in window)) {
+        alert("Este navegador não suporta síntese de voz.");
+        return;
+      }
+      const falar = () => {
+        const voices = speechSynthesis.getVoices();
 
       const vozFeminina =
         voices.find(v => v.lang === "pt-BR" && v.name.includes("Francisca")) ||
         voices.find(v => v.lang === "pt-BR" && v.name.includes("Maria")) ||
         voices.find(v => v.lang === "pt-BR");
 
-      const voz =
+        const voz =
         voices.find(v => v.lang === "pt-BR") ||
         voices.find(v => v.lang.startsWith("pt")) ||
         voices[0];
@@ -92,23 +104,43 @@ function Painel() {
       );
 
       msg.lang = "pt-BR";
-      msg.voice = vozFeminina || voz;
+      msg.voice = vozFeminina ?? voz;
       msg.volume = 1;
       msg.rate = 0.9;
       msg.pitch = 1;
 
-      console.log("Voz selecionada:", voz);
+        if (!voz) return;
 
-      window.speechSynthesis.speak(msg);
-    }
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.resume();
+        window.speechSynthesis.speak(msg);
+      };
 
-    window.speechSynthesis.cancel();
+      if (speechSynthesis.getVoices().length === 0) {
+        speechSynthesis.addEventListener("voiceschanged", falar, { once: true });
+      } else {
+        falar();
+      }
+    };
+
+    campainha.onended = pronunciar;
+    campainha.onerror = pronunciar;
+    void campainha.play().catch(pronunciar);
+    window.setTimeout(pronunciar, 1400);
+
   }
   useEffect(() => {
     if (!atual) return;
+    const chaveDaChamada = `${atual.id}:${atual.called_at}`;
+    if (ultimaChamadaAnunciada.current === null) {
+      ultimaChamadaAnunciada.current = chaveDaChamada;
+      return;
+    }
+    if (ultimaChamadaAnunciada.current === chaveDaChamada) return;
+    ultimaChamadaAnunciada.current = chaveDaChamada;
     console.log("Falando: ", rotuloChamada(atual, depAtual));
     falarNome(rotuloChamada(atual, depAtual) + " compareça ao atendimento no guichê " + atual.guiche + " no setor " + depAtual?.nome);
-  }, [atual])
+  }, [atual?.id, atual?.called_at])
 
   const veu = Math.min(Math.max(Number(config?.escurecimento ?? 0.72), 0), 1);
 
@@ -145,6 +177,19 @@ function Painel() {
             </p>
           </div>
           <div className="text-right">
+            {!audioLiberado && (
+              <button
+                type="button"
+                className="mb-2 rounded-full border border-panel-foreground/30 px-3 py-1 text-[10px] uppercase tracking-wider text-panel-foreground/80"
+                onClick={() => {
+                  const teste = new Audio("/freesound_community-ding-47489.mp3");
+                  void teste.play().catch(() => undefined);
+                  setAudioLiberado(true);
+                }}
+              >
+                Ativar áudio
+              </button>
+            )}
             <p className="font-display text-2xl font-bold tabular-nums">
               {new Date().toLocaleDateString("pt-BR")} {time}
             </p>
@@ -154,9 +199,9 @@ function Painel() {
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 gap-6 p-8 lg:grid-cols-[2.2fr_1fr]">
-          <section className="flex min-h-0 flex-col gap-6">
-            <div className="flex flex-1 flex-col items-center justify-center rounded-3xl border border-panel-foreground/10 bg-panel-muted/80 px-10 py-10 text-center shadow-2xl backdrop-blur">
+        <div className="grid min-h-0 flex-1 gap-6 overflow-hidden p-8 lg:grid-cols-12">
+          <section className="col-span-8 grid min-h-0 grid-rows-[minmax(0,1fr)_auto_auto] gap-4 overflow-hidden">
+            <div className="flex min-h-0 flex-col items-center justify-center rounded-3xl border border-panel-foreground/10 bg-panel-muted/45 px-10 py-8 text-center shadow-2xl backdrop-blur-md">
               <p className="text-sm uppercase tracking-[0.45em] text-panel-foreground/60">
                 {depAtual?.nome ?? "Chamada"}
               </p>
@@ -168,47 +213,65 @@ function Painel() {
               </div>
             </div>
 
-            <ul className="grid shrink-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {ativos.map((d) => {
-                const ultima = chamadas.find((s) => s.departamento_id === d.id);
+            <div className="flex items-center gap-4 px-2 text-panel-foreground/60">
+              <div className="h-px flex-1 bg-panel-foreground/20" />
+              <span className="text-xs font-semibold uppercase tracking-[0.35em]">Departamentos</span>
+              <div className="h-px flex-1 bg-panel-foreground/20" />
+            </div>
+
+            <ul className="grid w-full grid-cols-12 gap-2">
+              {itensPainel.map(({ departamento: d, guiche: guicheDoDepartamento }) => {
+                const ultima = chamadas.find((s) => s.departamento_id === d.id && (!guicheDoDepartamento || s.guiche === guicheDoDepartamento.nome));
                 const fila = senhas.filter(
                   (s) => s.departamento_id === d.id && s.status === "aguardando",
                 ).length;
+                const guichesDoDepartamento = guicheDoDepartamento ? [guicheDoDepartamento] : [];
                 return (
                   <li
-                    key={d.id}
-                    className="rounded-2xl border border-panel-foreground/10 bg-panel/70 px-4 py-3 text-left backdrop-blur"
+                    key={guicheDoDepartamento?.id ?? d.id}
+                    className="col-span-6 rounded-xl border border-panel-foreground/10 bg-panel/70 px-3 py-2 text-left backdrop-blur xl:col-span-6"
                   >
                     <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.2em] text-panel-foreground/60">
-                      <span className="truncate">{d.nome}</span>
+                      <span className="truncate">{d.nome}{guicheDoDepartamento ? ` · Guichê ${guicheDoDepartamento.nome}` : ""}</span>
                       <span>{fila} na fila</span>
                     </div>
                     <div className="mt-1 flex items-baseline justify-between gap-2">
-                      <span className="truncate font-display text-lg font-bold uppercase">
+                      <span className="truncate font-display text-base font-bold uppercase">
                         {ultima ? rotuloChamada(ultima, d) : "—"}
                       </span>
                       <span className="shrink-0 text-xs text-panel-foreground/60">
                         {ultima ? `Guichê ${ultima.guiche}` : ""}
                       </span>
                     </div>
+                    {/* <div className="mt-2 flex flex-wrap gap-1.5 border-t border-panel-foreground/10 pt-2">
+                      {guichesDoDepartamento.length === 0 ? (
+                        <span className="text-[10px] uppercase tracking-wider text-panel-foreground/45">Sem guichês</span>
+                      ) : (
+                        guichesDoDepartamento.map((g) => (
+                          <span key={g.id} className="rounded-full bg-panel-foreground/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-panel-foreground/70">
+                            Guichê {g.nome}
+                          </span>
+                        ))
+                      )}
+                    </div> */}
                   </li>
                 );
               })}
             </ul>
           </section>
 
-          <aside className="flex min-h-0 flex-col rounded-3xl border border-panel-foreground/10 bg-panel-muted/80 p-6 backdrop-blur">
+          <aside className="col-span-4 flex h-full min-h-0 flex-col self-start overflow-hidden rounded-3xl border border-panel-foreground/10 bg-panel-muted/45 p-6 backdrop-blur-md">
             <h2 className="text-xs uppercase tracking-[0.4em] text-panel-foreground/60">
               Últimas chamadas
             </h2>
-            <ul className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 overflow-y-hidden">
+            <ul className="mt-4 min-h-0 flex-1 space-y-3 overflow-hidden pr-1">
               {ultimas.length === 0 && (
                 <li className="text-sm text-panel-foreground/60">Sem chamadas anteriores.</li>
               )}
               {ultimas.map((s) => (
                 <li
                   key={s.id}
-                  className="rounded-2xl border border-panel-foreground/10 bg-panel/80 px-5 py-4"
+                    className="rounded-2xl border border-panel-foreground/10 bg-panel/45 px-5 py-4 backdrop-blur-sm"
                 >
                   <p className="truncate font-display text-2xl font-bold uppercase">
                     {rotuloChamada(s, depDe(s))}

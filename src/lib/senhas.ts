@@ -138,11 +138,16 @@ export async function rechamar(id: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function finalizar(id: string): Promise<void> {
+export async function finalizar(id: string, ausente = false): Promise<void> {
   const { error } = await supabase
     .from("senhas")
-    .update({ status: "atendida", finished_at: new Date().toISOString() })
+    .update({ status: ausente ? "ausente" : "atendida", finished_at: new Date().toISOString() })
     .eq("id", id);
+  if (error) throw error;
+}
+
+export async function removerDaFila(id: string): Promise<void> {
+  const { error } = await supabase.rpc("remover_senha_da_fila" as never, { p_id: id } as never);
   if (error) throw error;
 }
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { AppNav } from "@/components/AppNav";
@@ -16,6 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useDepartamentos, useGuiches, usePainelConfig } from "@/hooks/use-senhas";
+import { supabase } from "@/integrations/supabase/client";
+import { criarUsuario, type UserRole } from "@/lib/auth";
 import {
   atualizarDepartamento,
   atualizarGuiche,
@@ -47,10 +49,16 @@ function Admin() {
   const queryClient = useQueryClient();
   const { data: departamentos = [] } = useDepartamentos();
   const { data: guiches = [] } = useGuiches();
+  const usuarios = useQuery({ queryKey: ["perfis-usuarios"], queryFn: async () => {
+    const { data, error } = await (supabase.from("perfis_usuarios" as never) as any).select("*").order("nome");
+    if (error) throw error;
+    return data ?? [];
+  }});
 
   const [nome, setNome] = useState("");
   const [prefixo, setPrefixo] = useState("A");
   const [modo, setModo] = useState("senha");
+  const [novoUsuario, setNovoUsuario] = useState({ nome: "", email: "", password: "", perfil: "funcionario" as UserRole, departamento_id: "", guiche_id: "" });
 
   const [guicheDep, setGuicheDep] = useState("");
   const [guicheNome, setGuicheNome] = useState("");
@@ -114,8 +122,17 @@ function Admin() {
   });
 
   const editarGuiche = useMutation({
-    mutationFn: ({ id, ativo }: { id: string; ativo: boolean }) => atualizarGuiche(id, { ativo }),
+    mutationFn: ({ id, ativo, nome }: { id: string; ativo?: boolean; nome?: string }) => atualizarGuiche(id, { ativo, nome }),
     onSuccess: recarregar,
+  });
+  const editarUsuario = useMutation({
+    mutationFn: ({ user_id, patch }: { user_id: string; patch: Record<string, unknown> }) => (supabase.from("perfis_usuarios" as never) as any).update(patch).eq("user_id", user_id),
+    onSuccess: () => usuarios.refetch(),
+  });
+  const criarNovoUsuario = useMutation({
+    mutationFn: () => criarUsuario({ ...novoUsuario, departamento_id: novoUsuario.departamento_id || null, guiche_id: novoUsuario.guiche_id || null }),
+    onSuccess: ({ error }) => { if (error) { toast.error(error.message); return; } toast.success("Usuário criado"); setNovoUsuario({ nome: "", email: "", password: "", perfil: "funcionario", departamento_id: "", guiche_id: "" }); usuarios.refetch(); },
+    onError: () => toast.error("Não foi possível criar o usuário"),
   });
 
   return (
@@ -282,7 +299,14 @@ function Admin() {
             <div key={d.id} className="rounded-xl border border-border bg-card p-6">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <p className="font-display text-lg font-bold">{d.nome}</p>
+                  <Input
+                    className="h-9 max-w-sm font-display text-lg font-bold"
+                    defaultValue={d.nome}
+                    onBlur={(e) => {
+                      const nome = e.target.value.trim();
+                      if (nome && nome !== d.nome) editarDep.mutate({ id: d.id, patch: { nome } });
+                    }}
+                  />
                   <p className="text-xs text-muted-foreground">
                     Prefixo {d.prefixo} ·{" "}
                     {d.modo === "lista" ? "chamada por lista de nomes" : "chamada por senha"}
@@ -305,9 +329,13 @@ function Admin() {
                       key={g.id}
                       className="flex items-center gap-3 rounded-md bg-secondary px-3 py-2 text-sm"
                     >
-                      <span className={g.ativo ? "font-medium" : "text-muted-foreground line-through"}>
+                      <Input className="h-8 w-32" defaultValue={g.nome} onBlur={(e) => {
+                        const nome = e.target.value.trim();
+                        if (nome && nome !== g.nome) editarGuiche.mutate({ id: g.id, nome });
+                      }} />
+                      {/*
                         Guichê {g.nome}
-                      </span>
+                      </span> */}
                       <Switch
                         checked={g.ativo}
                         onCheckedChange={(v) => editarGuiche.mutate({ id: g.id, ativo: v })}
@@ -320,6 +348,30 @@ function Admin() {
               </ul>
             </div>
           ))}
+        </section>
+        <section className="mt-8 rounded-xl border border-border bg-card p-6">
+          <h2 className="text-base font-bold">Usuários e permissões</h2>
+          <div className="mt-4 grid gap-3 rounded-lg border border-dashed p-4 md:grid-cols-2">
+            <Input placeholder="Nome" value={novoUsuario.nome} onChange={(e) => setNovoUsuario({ ...novoUsuario, nome: e.target.value })} />
+            <Input type="email" placeholder="E-mail" value={novoUsuario.email} onChange={(e) => setNovoUsuario({ ...novoUsuario, email: e.target.value })} />
+            <Input type="password" placeholder="Senha inicial" value={novoUsuario.password} onChange={(e) => setNovoUsuario({ ...novoUsuario, password: e.target.value })} />
+            <Select value={novoUsuario.perfil} onValueChange={(perfil: UserRole) => setNovoUsuario({ ...novoUsuario, perfil })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="admin">Administrador</SelectItem><SelectItem value="gerente">Gerente</SelectItem><SelectItem value="funcionario">Funcionário</SelectItem><SelectItem value="recepcionista">Recepcionista</SelectItem></SelectContent></Select>
+            <Select value={novoUsuario.departamento_id || "none"} onValueChange={(departamento_id) => setNovoUsuario({ ...novoUsuario, departamento_id: departamento_id === "none" ? "" : departamento_id, guiche_id: "" })}><SelectTrigger><SelectValue placeholder="Departamento" /></SelectTrigger><SelectContent><SelectItem value="none">Sem departamento</SelectItem>{departamentos.map((d) => <SelectItem key={d.id} value={d.id}>{d.nome}</SelectItem>)}</SelectContent></Select>
+            <Select value={novoUsuario.guiche_id || "none"} onValueChange={(guiche_id) => setNovoUsuario({ ...novoUsuario, guiche_id: guiche_id === "none" ? "" : guiche_id })}><SelectTrigger><SelectValue placeholder="Guichê" /></SelectTrigger><SelectContent><SelectItem value="none">Sem guichê</SelectItem>{guiches.filter((g) => !novoUsuario.departamento_id || g.departamento_id === novoUsuario.departamento_id).map((g) => <SelectItem key={g.id} value={g.id}>{g.nome}</SelectItem>)}</SelectContent></Select>
+            <Button className="md:col-span-2" onClick={() => criarNovoUsuario.mutate()} disabled={!novoUsuario.email || novoUsuario.password.length < 6 || criarNovoUsuario.isPending}>Criar usuário</Button>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">Vincule usuários existentes a perfil, departamento e guichê.</p>
+          <div className="mt-4 space-y-3">
+            {(usuarios.data ?? []).map((u: any) => (
+              <div key={u.user_id} className="grid gap-3 rounded-lg bg-secondary p-4 md:grid-cols-[1.2fr_1fr_1fr_1fr] md:items-end">
+                <div><p className="text-sm font-medium">{u.nome || u.user_id}</p><p className="text-xs text-muted-foreground">{u.user_id}</p></div>
+                <Select value={u.perfil} onValueChange={(perfil) => editarUsuario.mutate({ user_id: u.user_id, patch: { perfil } })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="admin">Administrador</SelectItem><SelectItem value="gerente">Gerente</SelectItem><SelectItem value="funcionario">Funcionário</SelectItem><SelectItem value="recepcionista">Recepcionista</SelectItem></SelectContent></Select>
+                <Select value={u.departamento_id ?? "none"} onValueChange={(departamento_id) => editarUsuario.mutate({ user_id: u.user_id, patch: { departamento_id: departamento_id === "none" ? null : departamento_id, guiche_id: null } })}><SelectTrigger><SelectValue placeholder="Departamento" /></SelectTrigger><SelectContent><SelectItem value="none">Sem departamento</SelectItem>{departamentos.map((d) => <SelectItem key={d.id} value={d.id}>{d.nome}</SelectItem>)}</SelectContent></Select>
+                <Select value={u.guiche_id ?? "none"} onValueChange={(guiche_id) => editarUsuario.mutate({ user_id: u.user_id, patch: { guiche_id: guiche_id === "none" ? null : guiche_id } })}><SelectTrigger><SelectValue placeholder="Guichê" /></SelectTrigger><SelectContent><SelectItem value="none">Sem guichê</SelectItem>{guiches.filter((g) => !u.departamento_id || g.departamento_id === u.departamento_id).map((g) => <SelectItem key={g.id} value={g.id}>{g.nome}</SelectItem>)}</SelectContent></Select>
+              </div>
+            ))}
+            {usuarios.data?.length === 0 && <p className="text-sm text-muted-foreground">Nenhum perfil criado ainda.</p>}
+          </div>
         </section>
       </main>
     </div>

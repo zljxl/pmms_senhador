@@ -1,6 +1,6 @@
 import { usePainelConfig } from "@/hooks/use-senhas";
 import { Link } from "@tanstack/react-router";
-import { config } from "process";
+import { signOut } from "@/lib/auth";
 
 const itens = [
   { to: "/", label: "Atendimento" },
@@ -14,7 +14,7 @@ export function AppNav() {
   const { data: config } = usePainelConfig();
 
   return (
-    <header className="border-b border-border bg-card">
+    <header className="border-b border-border bg-card print:hidden">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-4">
         <div className="flex items-center gap-3">
           {config?.brasao_url && (
@@ -41,6 +41,7 @@ export function AppNav() {
               {item.label}
             </Link>
           ))}
+          <button className="rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-secondary" onClick={() => signOut()}>Sair</button>
         </nav>
       </div>
     </header>

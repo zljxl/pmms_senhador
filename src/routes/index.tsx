@@ -15,7 +15,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useDepartamentos, useGuiches, useSenhasDeHoje } from "@/hooks/use-senhas";
-import { chamarProxima, emitirSenha, finalizar, rechamar, rotuloChamada } from "@/lib/senhas";
+import { chamarProxima, emitirSenha, finalizar, rechamar, removerDaFila, rotuloChamada } from "@/lib/senhas";
+import { supabase } from "@/integrations/supabase/client";
+import { usePerfilUsuario } from "@/hooks/use-perfil";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -40,16 +42,23 @@ function Atendimento() {
   const [departamentoId, setDepartamentoId] = useState("");
   const [guiche, setGuiche] = useState("");
   const [nomePessoa, setNomePessoa] = useState("");
+  const [arrastando, setArrastando] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const { data: departamentos = [] } = useDepartamentos();
   const { data: guiches = [] } = useGuiches();
   const { data: senhas = [], isLoading } = useSenhasDeHoje();
+  const { data: perfil, isLoading: carregandoPerfil } = usePerfilUsuario();
+  const podeRemover = !!perfil?.ativo && ["admin", "gerente", "funcionario", "recepcionista"].includes(perfil.perfil);
 
   const ativos = useMemo(() => departamentos.filter((d) => d.ativo), [departamentos]);
   const dep = ativos.find((d) => d.id === departamentoId);
   const modoLista = dep?.modo === "lista";
   const guichesDoDep = guiches.filter((g) => g.ativo && g.departamento_id === departamentoId);
+
+  const guichesPermitidos = perfil?.guiche_id
+    ? guichesDoDep.filter((g) => g.id === perfil.guiche_id)
+    : guichesDoDep;
 
   useEffect(() => {
     const salvoDep = window.localStorage.getItem("departamento_id") ?? "";
@@ -61,6 +70,17 @@ function Atendimento() {
   useEffect(() => {
     if (!departamentoId && ativos.length > 0) setDepartamentoId(ativos[0]!.id);
   }, [ativos, departamentoId]);
+
+  useEffect(() => {
+    if (perfil?.departamento_id) setDepartamentoId(perfil.departamento_id);
+  }, [perfil?.departamento_id]);
+
+  useEffect(() => {
+    if (perfil?.guiche_id) {
+      const guicheDoPerfil = guiches.find((g) => g.id === perfil.guiche_id);
+      if (guicheDoPerfil) setGuiche(guicheDoPerfil.nome);
+    }
+  }, [perfil?.guiche_id, guiches]);
 
   useEffect(() => {
     if (departamentoId) window.localStorage.setItem("departamento_id", departamentoId);
@@ -106,18 +126,39 @@ function Atendimento() {
   });
 
   const acaoFinalizar = useMutation({
-    mutationFn: finalizar,
-    onSuccess: () => {
-      toast.success("Atendimento finalizado");
+    mutationFn: ({ id, ausente }: { id: string; ausente: boolean }) => finalizar(id, ausente),
+    onSuccess: (_data, { ausente }) => {
+      toast.success(ausente ? "Pessoa marcada como ausente" : "Atendimento finalizado");
       invalidar();
     },
   });
 
+  const acaoRemover = useMutation({
+    mutationFn: removerDaFila,
+    onSuccess: () => {
+      toast.success("Item removido da fila");
+      invalidar();
+    },
+    onError: () => toast.error("Não foi possível remover da fila"),
+  });
+
   const doDep = senhas.filter((s) => s.departamento_id === departamentoId);
   const aguardando = doDep.filter((s) => s.status === "aguardando");
+  const filaOrdenada = [...aguardando].sort((a, b) => a.numero - b.numero);
   const minhaSenha = doDep.find((s) => s.status === "chamada" && s.guiche === guiche);
   const outrosGuiches = doDep.filter((s) => s.status === "chamada" && s.guiche !== guiche);
   const semGuiche = guiche.trim().length === 0 || !departamentoId;
+
+  async function reordenar(id: string) {
+    if (!arrastando || arrastando === id) return;
+    const ids = filaOrdenada.map((s) => s.id);
+    const de = ids.indexOf(arrastando); const para = ids.indexOf(id);
+    ids.splice(de, 1); ids.splice(para, 0, arrastando);
+    await Promise.all(ids.map((senhaId, ordem) => supabase.from("senhas").update({ ordem }).eq("id", senhaId)));
+    setArrastando(null); invalidar();
+  }
+
+  if (carregandoPerfil) return <div className="grid min-h-screen place-items-center">Carregando seu guichê...</div>;
 
   return (
     <div className="min-h-screen">
@@ -133,12 +174,12 @@ function Atendimento() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label>Departamento</Label>
-                <Select value={departamentoId} onValueChange={setDepartamentoId}>
+                <Select value={departamentoId} onValueChange={setDepartamentoId} disabled={!!perfil?.departamento_id}>
                   <SelectTrigger className="mt-2">
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
-                    {ativos.map((d) => (
+                    {ativos.filter((d) => !perfil?.departamento_id || d.id === perfil.departamento_id).map((d) => (
                       <SelectItem key={d.id} value={d.id}>
                         {d.nome}
                       </SelectItem>
@@ -148,19 +189,19 @@ function Atendimento() {
               </div>
               <div>
                 <Label>Meu guichê</Label>
-                <Select value={guiche} onValueChange={setGuiche}>
+                <Select value={guiche} onValueChange={setGuiche} disabled={!!perfil?.guiche_id}>
                   <SelectTrigger className="mt-2">
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
-                    {guichesDoDep.map((g) => (
+                    {guichesPermitidos.map((g) => (
                       <SelectItem key={g.id} value={g.nome}>
                         {g.nome}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {guichesDoDep.length === 0 && departamentoId && (
+                {guichesPermitidos.length === 0 && departamentoId && (
                   <p className="mt-2 text-xs text-accent">
                     Nenhum guichê cadastrado neste departamento.
                   </p>
@@ -193,7 +234,13 @@ function Atendimento() {
                 <Button
                   variant="secondary"
                   disabled={!minhaSenha || acaoFinalizar.isPending}
-                  onClick={() => minhaSenha && acaoFinalizar.mutate(minhaSenha.id)}
+                  onClick={() => {
+                    if (!minhaSenha) return;
+                    const ausente = window.confirm(
+                      "A pessoa estava ausente?\n\nOK: marcar como ausente\nCancelar: finalizar como atendida.",
+                    );
+                    acaoFinalizar.mutate({ id: minhaSenha.id, ausente });
+                  }}
                 >
                   Finalizar
                 </Button>
@@ -249,10 +296,14 @@ function Atendimento() {
                 {!isLoading && aguardando.length === 0 && (
                   <li className="text-sm text-muted-foreground">Ninguém aguardando.</li>
                 )}
-                {aguardando.map((s, i) => (
+                {filaOrdenada.map((s, i) => (
                   <li
                     key={s.id}
-                    className={`flex items-center justify-between rounded-md px-3 py-2 text-sm ${
+                    draggable
+                    onDragStart={() => setArrastando(s.id)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => void reordenar(s.id)}
+                    className={`flex cursor-grab items-center justify-between rounded-md px-3 py-2 text-sm ${
                       i === 0
                         ? "bg-accent text-accent-foreground"
                         : "bg-secondary text-secondary-foreground"
@@ -267,6 +318,21 @@ function Atendimento() {
                     >
                       Chamar
                     </Button>
+                    {podeRemover && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive"
+                        disabled={acaoRemover.isPending}
+                        onClick={() => {
+                          if (window.confirm(`Remover ${rotuloChamada(s, dep)} da fila?`)) {
+                            acaoRemover.mutate(s.id);
+                          }
+                        }}
+                      >
+                        Remover
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>

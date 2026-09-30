@@ -7,7 +7,10 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import type { Session } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -120,6 +123,19 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const location = useRouter().state.location;
+  const [session, setSession] = useState<Session | null>(null);
+  const [ready, setReady] = useState(false);
+  const publicRoute = location.pathname === "/painel" || location.pathname === "/login";
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => { setSession(data.session); setReady(true); });
+    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  if (!ready) return <div className="grid min-h-screen place-items-center">Carregando...</div>;
+  if (!session && !publicRoute) return <LoginRequired />;
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -130,3 +146,7 @@ function RootComponent() {
   );
 }
 
+function LoginRequired() {
+  const router = useRouter();
+  return <div className="grid min-h-screen place-items-center bg-muted/30 px-4"><div className="text-center"><h1 className="text-2xl font-bold">Login necessário</h1><p className="mt-2 text-muted-foreground">Faça login para acessar esta área.</p><Button className="mt-5" onClick={() => router.navigate({ to: "/login" })}>Ir para login</Button></div></div>;
+}

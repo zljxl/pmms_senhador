@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { AppNav } from "@/components/AppNav";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -106,19 +107,13 @@ function Relatorios() {
               Números atualizados automaticamente com base nas senhas de hoje.
             </p>
           </div>
-          <Select value={filtro} onValueChange={setFiltro}>
-            <SelectTrigger className="w-56">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos os departamentos</SelectItem>
-              {departamentos.map((d) => (
-                <SelectItem key={d.id} value={d.id}>
-                  {d.nome}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2 print:hidden">
+            <Select value={filtro} onValueChange={setFiltro}>
+              <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="todos">Todos os departamentos</SelectItem>{departamentos.map((d) => <SelectItem key={d.id} value={d.id}>{d.nome}</SelectItem>)}</SelectContent>
+            </Select>
+            <Button onClick={() => window.print()}>Imprimir relatório</Button>
+          </div>
         </div>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
