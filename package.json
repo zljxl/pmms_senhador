@@ -7,7 +7,7 @@
     "dev": "next dev -p 3131",
     "build": "next build",
     "build:dev": "next build",
-    "preview": "next start",
+    "preview": "next start -p 3131",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
