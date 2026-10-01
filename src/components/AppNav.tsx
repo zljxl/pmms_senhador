@@ -1,5 +1,5 @@
 import { usePainelConfig } from "@/hooks/use-senhas";
-import { Link } from "@tanstack/react-router";
+import Link from "next/link";
 import { signOut } from "@/lib/auth";
 
 const itens = [
@@ -33,15 +33,18 @@ export function AppNav() {
           {itens.map((item) => (
             <Link
               key={item.to}
-              to={item.to}
-              activeOptions={{ exact: item.to === "/" }}
+              href={item.to === "/" ? "/atendimento" : item.to}
               className="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              activeProps={{ className: "bg-secondary text-foreground" }}
             >
               {item.label}
             </Link>
           ))}
-          <button className="rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-secondary" onClick={() => signOut()}>Sair</button>
+          <button
+            className="rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-secondary"
+            onClick={() => signOut()}
+          >
+            Sair
+          </button>
         </nav>
       </div>
     </header>

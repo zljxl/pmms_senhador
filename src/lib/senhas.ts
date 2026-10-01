@@ -18,6 +18,7 @@ export type Guiche = {
 export type Senha = {
   id: string;
   numero: number;
+  ordem: number | null;
   dia: string;
   status: string;
   guiche: string | null;
@@ -75,10 +76,7 @@ export async function listarGuiches(): Promise<Guiche[]> {
   return (data ?? []) as Guiche[];
 }
 
-export async function criarGuiche(input: {
-  departamento_id: string;
-  nome: string;
-}): Promise<void> {
+export async function criarGuiche(input: { departamento_id: string; nome: string }): Promise<void> {
   const { error } = await supabase.from("guiches").insert({
     departamento_id: input.departamento_id,
     nome: input.nome.trim(),

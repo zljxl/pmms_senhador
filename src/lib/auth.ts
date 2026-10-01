@@ -18,8 +18,12 @@ export async function signOut() {
 }
 
 export async function criarUsuario(input: {
-  nome: string; email: string; password: string; perfil: UserRole;
-  departamento_id?: string | null; guiche_id?: string | null;
+  nome: string;
+  email: string;
+  password: string;
+  perfil: UserRole;
+  departamento_id?: string | null;
+  guiche_id?: string | null;
 }) {
   return supabase.functions.invoke("criar-usuario", { body: input });
 }
