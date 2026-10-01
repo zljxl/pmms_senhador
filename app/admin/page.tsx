@@ -45,7 +45,11 @@ export default function AdminPage() {
   const [perfilUsuario, setPerfilUsuario] = useState<UserRole>("funcionario");
   const [departamentoUsuario, setDepartamentoUsuario] = useState("");
   const [guicheUsuario, setGuicheUsuario] = useState("");
-  const [editando, setEditando] = useState<{ tipo: "departamento" | "guiche"; id: string; nome: string } | null>(null);
+  const [editando, setEditando] = useState<{
+    tipo: "departamento" | "guiche";
+    id: string;
+    nome: string;
+  } | null>(null);
   useEffect(() => {
     if (config) {
       setTitulo(config.titulo);
@@ -54,18 +58,31 @@ export default function AdminPage() {
     }
   }, [config]);
   const invalidar = () => client.invalidateQueries();
-  const { data: usuarios = [], isLoading: carregandoUsuarios, error: erroUsuarios } = useQuery({
+  const {
+    data: usuarios = [],
+    isLoading: carregandoUsuarios,
+    error: erroUsuarios,
+  } = useQuery({
     queryKey: ["usuarios"],
     queryFn: async () => {
       const { data: authData, error: authError } = await supabase.auth.getUser();
       if (authError) throw authError;
       if (!authData.user) throw new Error("Sessão expirada. Faça login novamente.");
 
+      // A tabela ainda não está incluída nos tipos gerados do Supabase.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase.from("perfis_usuarios" as never) as any)
         .select("user_id, nome, perfil, departamento_id, guiche_id, ativo")
         .order("nome", { ascending: true });
       if (error) throw error;
-      return data as Array<{ user_id: string; nome: string; perfil: UserRole; departamento_id: string | null; guiche_id: string | null; ativo: boolean }>;
+      return data as Array<{
+        user_id: string;
+        nome: string;
+        perfil: UserRole;
+        departamento_id: string | null;
+        guiche_id: string | null;
+        ativo: boolean;
+      }>;
     },
   });
   const novoDep = useMutation({
@@ -100,8 +117,12 @@ export default function AdminPage() {
     },
     onSuccess: () => {
       toast.success("Usuário criado");
-      setNomeUsuario(""); setEmailUsuario(""); setSenhaUsuario("");
-      setPerfilUsuario("funcionario"); setDepartamentoUsuario(""); setGuicheUsuario("");
+      setNomeUsuario("");
+      setEmailUsuario("");
+      setSenhaUsuario("");
+      setPerfilUsuario("funcionario");
+      setDepartamentoUsuario("");
+      setGuicheUsuario("");
       invalidar();
     },
     onError: () => toast.error("Não foi possível criar o usuário"),
@@ -133,7 +154,8 @@ export default function AdminPage() {
   const salvarNome = async () => {
     if (!editando?.nome.trim()) return;
     try {
-      if (editando.tipo === "departamento") await atualizarDepartamento(editando.id, { nome: editando.nome.trim() });
+      if (editando.tipo === "departamento")
+        await atualizarDepartamento(editando.id, { nome: editando.nome.trim() });
       else await atualizarGuiche(editando.id, { nome: editando.nome.trim() });
       setEditando(null);
       toast.success("Nome atualizado");
@@ -207,52 +229,137 @@ export default function AdminPage() {
           <section className="rounded-xl border border-border bg-card p-6">
             <h2 className="font-bold">Criar usuário</h2>
             <div className="mt-4 grid gap-3">
-              <Input value={nomeUsuario} onChange={(e) => setNomeUsuario(e.target.value)} placeholder="Nome completo" />
-              <Input type="email" value={emailUsuario} onChange={(e) => setEmailUsuario(e.target.value)} placeholder="E-mail" />
-              <Input type="password" value={senhaUsuario} onChange={(e) => setSenhaUsuario(e.target.value)} placeholder="Senha de acesso" />
-              <Select value={perfilUsuario} onValueChange={(value) => setPerfilUsuario(value as UserRole)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{(Object.keys(roleLabels) as UserRole[]).map((perfil) => <SelectItem key={perfil} value={perfil}>{roleLabels[perfil]}</SelectItem>)}</SelectContent>
+              <Input
+                value={nomeUsuario}
+                onChange={(e) => setNomeUsuario(e.target.value)}
+                placeholder="Nome completo"
+              />
+              <Input
+                type="email"
+                value={emailUsuario}
+                onChange={(e) => setEmailUsuario(e.target.value)}
+                placeholder="E-mail"
+              />
+              <Input
+                type="password"
+                value={senhaUsuario}
+                onChange={(e) => setSenhaUsuario(e.target.value)}
+                placeholder="Senha de acesso"
+              />
+              <Select
+                value={perfilUsuario}
+                onValueChange={(value) => setPerfilUsuario(value as UserRole)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(roleLabels) as UserRole[]).map((perfil) => (
+                    <SelectItem key={perfil} value={perfil}>
+                      {roleLabels[perfil]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
-              <Select value={departamentoUsuario} onValueChange={(value) => { setDepartamentoUsuario(value); setGuicheUsuario(""); }}>
-                <SelectTrigger><SelectValue placeholder="Departamento (opcional)" /></SelectTrigger>
-                <SelectContent>{departamentos.map((d) => <SelectItem key={d.id} value={d.id}>{d.nome}</SelectItem>)}</SelectContent>
+              <Select
+                value={departamentoUsuario}
+                onValueChange={(value) => {
+                  setDepartamentoUsuario(value);
+                  setGuicheUsuario("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Departamento (opcional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {departamentos.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
-              <Select value={guicheUsuario} onValueChange={setGuicheUsuario} disabled={!departamentoUsuario}>
-                <SelectTrigger><SelectValue placeholder="Guichê (opcional)" /></SelectTrigger>
-                <SelectContent>{guiches.filter((g) => g.departamento_id === departamentoUsuario).map((g) => <SelectItem key={g.id} value={g.id}>{g.nome}</SelectItem>)}</SelectContent>
+              <Select
+                value={guicheUsuario}
+                onValueChange={setGuicheUsuario}
+                disabled={!departamentoUsuario}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Guichê (opcional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {guiches
+                    .filter((g) => g.departamento_id === departamentoUsuario)
+                    .map((g) => (
+                      <SelectItem key={g.id} value={g.id}>
+                        {g.nome}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
               </Select>
-              <Button disabled={!nomeUsuario.trim() || !emailUsuario.trim() || senhaUsuario.length < 6 || novoUsuario.isPending} onClick={() => novoUsuario.mutate()}>Criar usuário</Button>
+              <Button
+                disabled={
+                  !nomeUsuario.trim() ||
+                  !emailUsuario.trim() ||
+                  senhaUsuario.length < 6 ||
+                  novoUsuario.isPending
+                }
+                onClick={() => novoUsuario.mutate()}
+              >
+                Criar usuário
+              </Button>
             </div>
           </section>
           <section className="rounded-xl border border-border bg-card p-6">
             <h2 className="font-bold">Usuários cadastrados</h2>
             <ul className="mt-4 space-y-2">
-              {carregandoUsuarios && <li className="text-sm text-muted-foreground">Carregando usuarios...</li>}
-              {erroUsuarios && <li className="text-sm text-destructive">Nao foi possivel carregar os usuarios. Verifique sua sessao e tente novamente.</li>}
-              {!carregandoUsuarios && !erroUsuarios && usuarios.length === 0 && <li className="text-sm text-muted-foreground">Nenhum usuario cadastrado.</li>}
+              {carregandoUsuarios && (
+                <li className="text-sm text-muted-foreground">Carregando usuarios...</li>
+              )}
+              {erroUsuarios && (
+                <li className="text-sm text-destructive">
+                  Nao foi possivel carregar os usuarios. Verifique sua sessao e tente novamente.
+                </li>
+              )}
+              {!carregandoUsuarios && !erroUsuarios && usuarios.length === 0 && (
+                <li className="text-sm text-muted-foreground">Nenhum usuario cadastrado.</li>
+              )}
               {usuarios.map((usuario) => {
                 const departamento = departamentos.find((d) => d.id === usuario.departamento_id);
                 const guicheDoUsuario = guiches.find((g) => g.id === usuario.guiche_id);
-                return <li key={usuario.user_id} className="flex items-center justify-between gap-3 rounded-md bg-secondary px-3 py-2 text-sm">
-                  <div>
-                    <p className="font-medium">{usuario.nome || "Sem nome"}</p>
-                    <p className="text-xs text-muted-foreground">{roleLabels[usuario.perfil]} · {departamento?.nome ?? "Todos os departamentos"}{guicheDoUsuario ? ` · Guichê ${guicheDoUsuario.nome}` : ""}{!usuario.ativo ? " · Inativo" : ""}</p>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="destructive"
-                    disabled={apagarUsuario.isPending}
-                    onClick={() => {
-                      if (window.confirm(`Apagar o usuário ${usuario.nome || "sem nome"}? Essa ação não pode ser desfeita.`)) {
-                        apagarUsuario.mutate(usuario.user_id);
-                      }
-                    }}
+                return (
+                  <li
+                    key={usuario.user_id}
+                    className="flex items-center justify-between gap-3 rounded-md bg-secondary px-3 py-2 text-sm"
                   >
-                    Apagar
-                  </Button>
-                </li>;
+                    <div>
+                      <p className="font-medium">{usuario.nome || "Sem nome"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {roleLabels[usuario.perfil]} ·{" "}
+                        {departamento?.nome ?? "Todos os departamentos"}
+                        {guicheDoUsuario ? ` · Guichê ${guicheDoUsuario.nome}` : ""}
+                        {!usuario.ativo ? " · Inativo" : ""}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      disabled={apagarUsuario.isPending}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Apagar o usuário ${usuario.nome || "sem nome"}? Essa ação não pode ser desfeita.`,
+                          )
+                        ) {
+                          apagarUsuario.mutate(usuario.user_id);
+                        }
+                      }}
+                    >
+                      Apagar
+                    </Button>
+                  </li>
+                );
               })}
             </ul>
           </section>
@@ -304,10 +411,16 @@ export default function AdminPage() {
                   <b className="hidden">
                     {d.nome} · {d.modo === "lista" ? "lista" : `senha ${d.prefixo}`}
                   </b>
-                  <Button size="sm" variant="ghost" className="hidden" onClick={async () => {
-                    const novoNome = window.prompt("Novo nome do departamento", d.nome)?.trim();
-                    if (novoNome && novoNome !== d.nome) await atualizarDepartamento(d.id, { nome: novoNome }).then(invalidar);
-                  }}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="hidden"
+                    onClick={async () => {
+                      const novoNome = window.prompt("Novo nome do departamento", d.nome)?.trim();
+                      if (novoNome && novoNome !== d.nome)
+                        await atualizarDepartamento(d.id, { nome: novoNome }).then(invalidar);
+                    }}
+                  >
                     Editar nome
                   </Button>
                   <span className="flex items-center gap-2 text-sm">
@@ -325,10 +438,16 @@ export default function AdminPage() {
                     .filter((g) => g.departamento_id === d.id)
                     .map((g) => (
                       <span key={g.id} className="rounded bg-card px-2 py-1 text-xs">
-                        <button className="mr-1 text-primary" onClick={async () => {
-                          const novoNome = window.prompt("Novo nome do guichê", g.nome)?.trim();
-                          if (novoNome && novoNome !== g.nome) await atualizarGuiche(g.id, { nome: novoNome }).then(invalidar);
-                        }}>editar</button>{" "}
+                        <button
+                          className="mr-1 text-primary"
+                          onClick={async () => {
+                            const novoNome = window.prompt("Novo nome do guichê", g.nome)?.trim();
+                            if (novoNome && novoNome !== g.nome)
+                              await atualizarGuiche(g.id, { nome: novoNome }).then(invalidar);
+                          }}
+                        >
+                          editar
+                        </button>{" "}
                         Guichê {g.nome}{" "}
                         <button
                           className="ml-1 text-destructive"
@@ -347,4 +466,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
