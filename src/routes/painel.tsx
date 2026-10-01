@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useDepartamentos, useGuiches, usePainelConfig, useSenhasDeHoje } from "@/hooks/use-senhas";
 import { rotuloChamada, type Departamento, type Senha } from "@/lib/senhas";
 import { useEffect, useRef, useState } from "react";
+import puter from "@heyputer/puter.js"
 
 export const Route = createFileRoute("/painel")({
   head: () => ({
@@ -61,9 +62,9 @@ function Painel() {
 
   const ativos = departamentos.filter((d) => d.ativo);
   const chamadas = senhas.filter((s) => s.called_at).sort(ordenarPorChamada);
-  const atual = chamadas[0];
+  const atual = chamadas.find((s) => s.status === "chamada");
   const depAtual = ativos.find((d) => d.id === atual?.departamento_id);
-  const ultimas = chamadas.slice(1, 13);
+  const ultimas = chamadas.filter((s) => s.id !== atual?.id).slice(0, 12);
 
   const depDe = (s: Senha): Departamento | undefined =>
     ativos.find((d) => d.id === s.departamento_id);
@@ -80,9 +81,17 @@ function Painel() {
 
     let pronunciou = false;
     const pronunciar = () => {
-      if (pronunciou) return;
+      //if (pronunciou) return;
       pronunciou = true;
-      if (!("speechSynthesis" in window)) {
+      console.log("Pronunciando: ", nome);
+      puter.ai.txt2speech(nome, { voice: "Joana", engine: "neural", language: "pt-BR"})
+        .then((audio) => {
+          audio.play();
+        })
+        .catch((error) => {
+          console.error('Error:', error);
+        });
+      /*if (!("speechSynthesis" in window)) {
         alert("Este navegador não suporta síntese de voz.");
         return;
       }
@@ -120,10 +129,12 @@ function Painel() {
         speechSynthesis.addEventListener("voiceschanged", falar, { once: true });
       } else {
         falar();
-      }
+      }*/
     };
 
-    campainha.onended = pronunciar;
+    campainha.onended = async() => {
+      console.log("Campainha terminou, pronunciando...");
+    };
     campainha.onerror = pronunciar;
     void campainha.play().catch(pronunciar);
     window.setTimeout(pronunciar, 1400);
@@ -271,7 +282,7 @@ function Painel() {
               {ultimas.map((s) => (
                 <li
                   key={s.id}
-                    className="rounded-2xl border border-panel-foreground/10 bg-panel/45 px-5 py-4 backdrop-blur-sm"
+                  className="rounded-2xl border border-panel-foreground/10 bg-panel/45 px-5 py-4 backdrop-blur-sm"
                 >
                   <p className="truncate font-display text-2xl font-bold uppercase">
                     {rotuloChamada(s, depDe(s))}
