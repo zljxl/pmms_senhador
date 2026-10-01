@@ -27,3 +27,9 @@ export async function criarUsuario(input: {
 }) {
   return supabase.functions.invoke("criar-usuario", { body: input });
 }
+
+export async function excluirUsuario(user_id: string) {
+  return supabase.functions.invoke("criar-usuario", {
+    body: { action: "delete", user_id },
+  });
+}

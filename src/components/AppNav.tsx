@@ -1,5 +1,8 @@
+"use client";
+
 import { usePainelConfig } from "@/hooks/use-senhas";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth";
 
 const itens = [
@@ -12,6 +15,14 @@ const itens = [
 
 export function AppNav() {
   const { data: config } = usePainelConfig();
+  const router = useRouter();
+
+  const sair = async () => {
+    const { error } = await signOut();
+    if (error) return;
+    router.replace("/login");
+    router.refresh();
+  };
 
   return (
     <header className="border-b border-border bg-card print:hidden">
@@ -41,7 +52,8 @@ export function AppNav() {
           ))}
           <button
             className="rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-secondary"
-            onClick={() => signOut()}
+            type="button"
+            onClick={sair}
           >
             Sair
           </button>

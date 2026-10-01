@@ -27,9 +27,18 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (admin?.perfil !== "admin" || !admin.ativo)
       throw new Error("Apenas administradores podem criar usuários");
-    const { nome, email, password, perfil, departamento_id, guiche_id } = await req.json();
-    if (!email || !password || !perfil) throw new Error("Preencha os campos obrigatórios");
     const root = createClient(url, service);
+    const body = await req.json();
+    if (body.action === "delete") {
+      if (!body.user_id || body.user_id === user.id) throw new Error("Usuário inválido");
+      const { error: deleteError } = await root.auth.admin.deleteUser(body.user_id);
+      if (deleteError) throw deleteError;
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+    const { nome, email, password, perfil, departamento_id, guiche_id } = body;
+    if (!email || !password || !perfil) throw new Error("Preencha os campos obrigatórios");
     const { data: created, error } = await root.auth.admin.createUser({
       email,
       password,
